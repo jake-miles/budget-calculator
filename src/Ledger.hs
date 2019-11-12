@@ -27,23 +27,21 @@ data Transaction = BalanceOverride
 applyTransaction :: [Balance] -> Transaction -> [Balance]
 
 applyTransaction balances newInitialBalance@(BalanceOverride account day amount) =
-  map transformBalance balances
+  map transform balances
   where
-    transformBalance balance@(Balance _account _day _amount)
-      | _account == account = newInitialBalance
-      | otherwise = balance
+    transform b@(Balance _account _ _)
+      | account == _account = newInitialBalance
+      | otherwise = b
 
 applyTransaction balances (Transaction date from to delta reason) =
-  map transformBalance balances
+  map transform balances
   where
-    transformBalance balance@(Balance account day balanceAmount) 
-      | account == from = (Balance account day (subtract balanceAmount delta))
-      | account == to = (Balance account day (add balanceAmount delta))
-      | otherwise = balance
-      
+    transform b@(Balance account _ balance)
+      | from == account = Balance account date (subtract balance delta)
+      | to == account = Balance account date (add balance delta)
+      | otherwise = b
+
 applyTransactions :: [Balance] -> [Transaction] -> [Balance]
 applyTransactions balances transactions =
   foldl' applyTransaction balances $ sortBy transactionDate transactions
 
-
-      
