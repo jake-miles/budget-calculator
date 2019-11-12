@@ -13,10 +13,10 @@ data Balance = Balance {
   balanceAmount :: Money
 }
 
-type BalanceOverride = Balance
+type SetBalance = Balance
 
-data Transaction = BalanceOverride
-                 | Transaction {
+data Transaction = SetBalance
+                 | Transfer {
                      transactionDate :: Day,
                      accountFrom :: Account,
                      accountTo :: Account,
@@ -24,23 +24,23 @@ data Transaction = BalanceOverride
                      transactionReason :: Maybe[String]
                      }
 
+applyToBalance :: Balance -> Transaction -> Balance
+applyToBalance b@(Balance account _ balance) transaction =
+  case transaction of
+
+    newBalance@(SetBalance setBalanceAccount _ _) 
+      | account == setBalanceAccount -> newBalance
+      | _otherwise -> b
+
+    transfer@(Transfer date from to delta)
+      | from == account -> Balance account date (subtract balance delta)
+      | to == account -> Balance account date (add balance delta)
+      | _ -> b
+
 applyTransaction :: [Balance] -> Transaction -> [Balance]
-
-applyTransaction balances newInitialBalance@(BalanceOverride account day amount) =
-  map transform balances
-  where
-    transform b@(Balance _account _ _)
-      | account == _account = newInitialBalance
-      | otherwise = b
-
-applyTransaction balances (Transaction date from to delta reason) =
-  map transform balances
-  where
-    transform b@(Balance account _ balance)
-      | from == account = Balance account date (subtract balance delta)
-      | to == account = Balance account date (add balance delta)
-      | otherwise = b
-
+applyTransaction balances newInitialBalance =
+  map applyToBalance balances
+  
 applyTransactions :: [Balance] -> [Transaction] -> [Balance]
 applyTransactions balances transactions =
   foldl' applyTransaction balances $ sortBy transactionDate transactions
