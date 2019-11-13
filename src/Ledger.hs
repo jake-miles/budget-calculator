@@ -1,47 +1,50 @@
 module Ledger where
 
 import Data.Time
-import Data.Sort
+import Data.List
 import Money
 
 data Account = ExternalEntity String
              | Account String
+  deriving (Eq, Show)
 
 data Balance = Balance {
   balanceAccount :: Account,
-  balanceDay :: Day,
+  balanceDate :: Day,
   balanceAmount :: Money
-}
+} deriving (Eq, Show)
 
-type SetBalance = Balance
+type From = Account
+type To = Account
+type Amount = Money
+type Reason = String
+data Transaction = SetBalance Balance 
+                 | Transfer Day From To Amount Reason
+  deriving (Eq, Show)
 
-data Transaction = SetBalance
-                 | Transfer {
-                     transactionDate :: Day,
-                     accountFrom :: Account,
-                     accountTo :: Account,
-                     transactionAmount :: Money,
-                     transactionReason :: Maybe[String]
-                     }
+transactionDate :: Transaction -> Day
+transactionDate (SetBalance (Balance _ date _ )) = date
+transactionDate (Transfer date _ _ _ _) = date
 
-applyToBalance :: Balance -> Transaction -> Balance
-applyToBalance b@(Balance account _ balance) transaction =
+updateBalance :: Transaction -> Balance -> Balance
+updateBalance transaction before@(Balance account _ accountValue) =
   case transaction of
 
-    newBalance@(SetBalance setBalanceAccount _ _) 
-      | account == setBalanceAccount -> newBalance
-      | _otherwise -> b
+    -- note that `accountSet` cannot be an ExternalEntity
+    SetBalance newBalance@(Balance accountSet@(Account _) _ _)
+      | account == accountSet -> newBalance
+      | otherwise -> before
 
-    transfer@(Transfer date from to delta)
-      | from == account -> Balance account date (subtract balance delta)
-      | to == account -> Balance account date (add balance delta)
-      | _ -> b
+    Transfer date from to delta _
+      | account == from -> Balance account date (Money.subtract accountValue delta)
+      | account == to -> Balance account date (Money.add accountValue delta)
+      | otherwise -> before
 
 applyTransaction :: [Balance] -> Transaction -> [Balance]
-applyTransaction balances newInitialBalance =
-  map applyToBalance balances
-  
-applyTransactions :: [Balance] -> [Transaction] -> [Balance]
-applyTransactions balances transactions =
-  foldl' applyTransaction balances $ sortBy transactionDate transactions
+applyTransaction balances transaction =
+  map (updateBalance transaction) balances
 
+-- todo: how to make sure all Accounts referred to in the ledger exist?
+-- SetBalance could lazy-add the account. 
+  
+--balancesAsOf :: Day -> [Transaction] -> [Balance]
