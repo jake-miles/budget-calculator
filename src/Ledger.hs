@@ -9,54 +9,57 @@ data Account = ExternalEntity String
   deriving (Eq, Show)
 
 data Balance = Balance {
+  balanceAmount :: Money,  
   balanceAccount :: Account,
-  balanceAmount :: Money
+  balanceDate :: Day
 } deriving (Eq, Show)
 
-data Transaction = BalanceOverride Day Balance
-                 | Transfer {
-                     transferDate :: Day,
-                     transferFrom :: Account,
-                     transferTo :: Account,
-                     transferAmount :: Money,
-                     transferReason :: String
-                   }
+data Transaction = Transfer {
+  transferAmount :: Money,  
+  transferFrom :: Account,
+  transferTo :: Account,
+  transferDate :: Day,  
+  transferReason :: String
+}
   deriving (Eq, Show)
 
-transactionDate :: Transaction -> Day
-transactionDate (BalanceOverride date _) = date
-transactionDate (Transfer date _ _ _ _) = date
+transfer :: Money -> Account -> Account -> Date -> String -> Transfer
+transfer amount
+  | amount > 0 = Transfer amount
 
-applyTransaction :: Transaction -> [Balance] -> [Balance]
-applyTransaction transaction =
-  map (updateBalance transaction)
+class LedgerLine a where
+  ledgerLineDate :: a -> Day
+  updateBalance :: a -> Balance -> Balance
 
-updateBalance :: Transaction -> Balance -> Balance
-updateBalance transaction balance@(Balance account amount) =
-  let
-    noUpdate = balance    
-    update newAmount = Balance account newAmount
-  in
-    case transaction of
-       
-      BalanceOverride _ (Balance (ExternalEntity _) _) ->
-        error "You can only apply a BalanceOverride to an Account, not an ExternalEntity"
+instance LedgerLine Balance where
+
+  ledgerLineDate (Balance _ date _) = date
   
-      Transfer _ (ExternalEntity _) (ExternalEntity _) _ _ ->
-        error "One of a Transfer's accounts must be an Account; both cannot be ExternalEntities"
-  
-      BalanceOverride _ (Balance setAccount overrideAmount)
-        | account == setAccount -> update overrideAmount
-        | otherwise -> noUpdate
+  updateBalance (Balance (ExternalEntity _) _) =
+    error "You can only apply a BalanceOverride to an Account, not an ExternalEntity"
 
-      Transfer date from to delta _
-        | account == from -> update (Money.subtract amount delta)
-        | account == to -> update (Money.add amount delta)
-        | otherwise -> noUpdate
+  updateBalance new@(Balance _ updatedAccount _) old@(Balance _ account _) 
+    | updatedAccount == account = new
+    | otherwise = old
 
-data Ledger = Ledger [Account] [Transaction]
+instance LedgerLine Transaction where
 
-ledger :: [Account] -> [Transaction] -> Ledger
+  ledgerLineDate (Transfer _ _ date _ _) = date
+
+  updateBalance (Transfer _ (ExternalEntity _) (ExternalEntity _) _ _) =
+    error "One of a Transfer's accounts must be an Account; both cannot be ExternalEntities"
+
+  updateBalance (Transfer amount from to date _) old@(Balance balance account _)
+    | account == from = update (Money.negate amount)
+    | account == to = update amount
+    | otherwise = old
+    where
+      update delta = Balance (add balance delta) account date
+
+data Ledger = Ledger [Balance] [LedgerLine]
+  deriving (Eq, Show)
+
+ledger :: [Balance] -> [LedgerLine] -> Ledger
 ledger accounts transactions =
   Ledger accounts $ sortOn transactionDate transactions
 
