@@ -10,41 +10,62 @@ data Account = ExternalEntity String
 
 data Balance = Balance {
   balanceAccount :: Account,
-  balanceDate :: Day,
   balanceAmount :: Money
 } deriving (Eq, Show)
 
-type From = Account
-type To = Account
-type Amount = Money
-type Reason = String
-data Transaction = SetBalance Balance 
-                 | Transfer Day From To Amount Reason
+data Transaction = BalanceOverride Day Balance
+                 | Transfer {
+                     transferDate :: Day,
+                     transferFrom :: Account,
+                     transferTo :: Account,
+                     transferAmount :: Money,
+                     transferReason :: String
+                   }
   deriving (Eq, Show)
 
 transactionDate :: Transaction -> Day
-transactionDate (SetBalance (Balance _ date _ )) = date
+transactionDate (BalanceOverride date _) = date
 transactionDate (Transfer date _ _ _ _) = date
 
+applyTransaction :: Transaction -> [Balance] -> [Balance]
+applyTransaction transaction =
+  map (updateBalance transaction)
+
 updateBalance :: Transaction -> Balance -> Balance
-updateBalance transaction before@(Balance account _ accountValue) =
-  case transaction of
-
-    -- note that `accountSet` cannot be an ExternalEntity
-    SetBalance newBalance@(Balance accountSet@(Account _) _ _)
-      | account == accountSet -> newBalance
-      | otherwise -> before
-
-    Transfer date from to delta _
-      | account == from -> Balance account date (Money.subtract accountValue delta)
-      | account == to -> Balance account date (Money.add accountValue delta)
-      | otherwise -> before
-
-applyTransaction :: [Balance] -> Transaction -> [Balance]
-applyTransaction balances transaction =
-  map (updateBalance transaction) balances
-
--- todo: how to make sure all Accounts referred to in the ledger exist?
--- SetBalance could lazy-add the account. 
+updateBalance transaction balance@(Balance account amount) =
+  let
+    noUpdate = balance    
+    update newAmount = Balance account newAmount
+  in
+    case transaction of
+       
+      BalanceOverride _ (Balance (ExternalEntity _) _) ->
+        error "You can only apply a BalanceOverride to an Account, not an ExternalEntity"
   
+      Transfer _ (ExternalEntity _) (ExternalEntity _) _ _ ->
+        error "One of a Transfer's accounts must be an Account; both cannot be ExternalEntities"
+  
+      BalanceOverride _ (Balance setAccount overrideAmount)
+        | account == setAccount -> update overrideAmount
+        | otherwise -> noUpdate
+
+      Transfer date from to delta _
+        | account == from -> update (Money.subtract amount delta)
+        | account == to -> update (Money.add amount delta)
+        | otherwise -> noUpdate
+
+data Ledger = Ledger [Account] [Transaction]
+
+ledger :: [Account] -> [Transaction] -> Ledger
+ledger accounts transactions =
+  Ledger accounts $ sortOn transactionDate transactions
+
+ledgerBalances :: Ledger -> [Balance]
+ledgerBalances (Ledger accounts transactions) =
+  
+  
+
 --balancesAsOf :: Day -> [Transaction] -> [Balance]
+
+
+
