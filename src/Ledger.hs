@@ -9,59 +9,70 @@ data Account = ExternalEntity String
   deriving (Eq, Show)
 
 data Balance = Balance {
-  balanceAccount :: Account,
-  balanceAmount :: Money
+  balanceAmount :: Money,
+  balanceAccount :: Account,    
+  balanceDate :: Day
 } deriving (Eq, Show)
 
-data Transaction = BalanceOverride Day Balance
+data Transaction = BalanceOverride Balance
                  | Transfer {
-                     transferDate :: Day,
+                     transferAmount :: Money,                     
                      transferFrom :: Account,
                      transferTo :: Account,
-                     transferAmount :: Money,
+                     transferDate :: Day,                     
                      transferReason :: String
                    }
   deriving (Eq, Show)
 
+data Ledger = Ledger [Balance] [Transaction]
+  deriving (Show)
+
+balance :: Money -> Account -> Day -> Balance
+balance _ (ExternalEntity _) _ =
+  error "You can only apply a BalanceOverride to an Account, not an ExternalEntity"
+
+balance amount account date = Balance amount account date
+
+transfer :: Money -> Account -> Account -> Day -> String -> Transaction
+transfer _ (ExternalEntity _) (ExternalEntity _) _ _ =
+  error "One of a Transfer's accounts must be an Account; both cannot be ExternalEntities"
+  
+transfer amount from to date reason
+  | amount < Money(0) = error "You must specify a transfer as a positive amount"
+  | otherwise = Transfer amount from to date reason
+
 transactionDate :: Transaction -> Day
-transactionDate (BalanceOverride date _) = date
-transactionDate (Transfer date _ _ _ _) = date
+transactionDate (BalanceOverride (Balance _ _ date)) = date
+transactionDate (Transfer _ _ _ date _) = date
 
 applyTransaction :: Transaction -> [Balance] -> [Balance]
 applyTransaction transaction =
   map (updateBalance transaction)
 
 updateBalance :: Transaction -> Balance -> Balance
-updateBalance transaction balance@(Balance account amount) =
-  let
-    noUpdate = balance    
-    update newAmount = Balance account newAmount
-  in
-    case transaction of
+
+updateBalance transaction old@(Balance amount account _) =
+  case transaction of
        
-      BalanceOverride _ (Balance (ExternalEntity _) _) ->
-        error "You can only apply a BalanceOverride to an Account, not an ExternalEntity"
-  
-      Transfer _ (ExternalEntity _) (ExternalEntity _) _ _ ->
-        error "One of a Transfer's accounts must be an Account; both cannot be ExternalEntities"
-  
-      BalanceOverride _ (Balance setAccount overrideAmount)
-        | account == setAccount -> update overrideAmount
-        | otherwise -> noUpdate
+    BalanceOverride new@(Balance overrideAmount setAccount date)
+      | account == setAccount -> new
+      | otherwise -> old     
 
-      Transfer date from to delta _
-        | account == from -> update (Money.subtract amount delta)
-        | account == to -> update (Money.add amount delta)
-        | otherwise -> noUpdate
+    Transfer amount from to date _
+      | account == from -> update (Money.negate amount)
+      | account == to -> update amount
+      | otherwise -> old
+      where
+        update delta = Balance (Money.add amount delta) account date 
 
-data Ledger = Ledger [Account] [Transaction]
+-- the initial balances must be sorted in with the Transactions, and
+-- may not sort before them ... is something not quite right?
+ledger :: [Balance] -> [Transaction] -> Ledger
+ledger initial transactions =
+  Ledger initial $ sortOn transactionDate transactions
 
-ledger :: [Account] -> [Transaction] -> Ledger
-ledger accounts transactions =
-  Ledger accounts $ sortOn transactionDate transactions
-
-ledgerBalances :: Ledger -> [Balance]
-ledgerBalances (Ledger accounts transactions) =
+-- ledgerBalances :: Ledger -> [Balance]
+-- ledgerBalances (Ledger accounts transactions) =
   
   
 
