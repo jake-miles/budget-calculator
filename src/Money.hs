@@ -1,22 +1,29 @@
 module Money where
 
-data Money = Money { cents :: Integer }
-  deriving (Eq, Show)
+import PositiveInteger
 
+data Money = Credit PositiveInteger
+           | Debit PositiveInteger
+  deriving (Eq, Ord, Show)
+
+-- constructor for Money
 money :: Integer -> Money
-money cents
- | cents >= 0 = Money cents
- | error "Money can only represent a positive amount of money. To represent a negative delta, use `debit`"
+money n 
+  | n < 0 = Debit $ positiveInteger (-n)
+  | otherwise = Credit $ positiveInteger n
 
-debit :: Integer -> Money
-debit cents
- |
+toCents :: Money -> Integer
+toCents (Credit cents) = unPositiveInteger cents
+toCents (Debit cents) = unPositiveInteger cents
+
+-- Credit <-> Debit
+negate :: Money -> Money
+negate (Credit amount) = Debit amount
+negate (Debit amount) = Credit amount
 
 add :: Money -> Money -> Money
-add money1 money2 = Money $ cents money1 + cents money2
+add a b = money $ (toCents a) + (toCents b)
 
-negate :: Money -> Money
-negate (Money _cents) = Money (-_cents)
-
+-- returns a tuple (dollars, cents) for presentation
 dollars_and_cents :: Money -> (Integer, Integer)
-dollars_and_cents (Money _cents) = quotRem _cents 100
+dollars_and_cents money = quotRem (toCents money) 100
