@@ -1,7 +1,8 @@
 module Ledger where
 
 import Data.Time (Day)
-import Data.List (sortOn)
+import Data.List 
+import PositiveInteger
 import Money
 
 type What = String
@@ -30,18 +31,10 @@ data Transaction = Income Account (Maybe ExternalEntity) (Maybe What)
                  | Expense Account (Maybe ExternalEntity) (Maybe What)
                  | Transfer FromAccount ToAccount
                  | StartOfDayBalance Account
+  deriving (Eq, Show)
 
 type FromAccount = Account
 type ToAccount = Account
-
-find :: (a -> Bool) -> [a] -> Maybe[a]
-find match xs = case (filter match xs) of
-  [] -> Nothing
-  [x:_] -> Just x
-
-orElse :: a -> Maybe a -> a
-orElse defaultValue Nothing = defaultValue
-orElse _ (Just x) = x
 
 balanceHistory :: [Event] -> [Balance]
 balanceHistory events =
@@ -51,29 +44,28 @@ balanceHistory events =
 applyEvent :: [Balance] -> Event -> [Balance]
 applyEvent existingBalances event =
   let
-    findBalance balances = find (==balanceAccount) balances
-    zero = Balance (eventDate event) Money(0)
+    findBalance :: [Balance] -> Account -> Maybe Balance
+    findBalance balances account = find ((==account) . balanceAccount) balances
+    zero = Balance (eventDate event) (Money 0)
     getBalance account =
-      balanceAmount $ orElse (zero account) $ (findBalance existingBalances account)
+      maybe (zero account) id $ findBalance existingBalances account
     updatedAndNew = enact getBalance event
-    untouched = filter (not . findBalance updatesAndNew . balanceAccount) existingBalances    
+    untouched = null . (findBalance updatedAndNew) . balanceAccount
   in
-    untouched ++ updatedAndNew
+    (filter untouched existingBalances) ++ updatedAndNew
 
 enact :: (Account -> Balance) -> Event -> [Balance]
-enact getBalance (Event date amount transaction) =
+enact getBalance (Event date positiveAmount transaction) =
   let
-    set account newBalance =
-      Balance date (newBalance $ getBalance account) account
+    amount = toMoney positiveAmount
+    set account calcNewBalance =
+      Balance date (calcNewBalance $ balanceAmount $ getBalance account) account
   in case transaction of
     StartOfDayBalance account -> [set account $ const amount]    
-    Income account _ _ -> [set account $ \balance -> Money.add balance amount]
-    Expense account _ _ -> [set account $ \balance -> Money.add balance amount]
-    Transfer from to ->
-      [
-        set to $ \balance -> Money.add balance amount,
-        set from $ \balance -> Money.add balance $ Money.negate amount
-      ]
+    Income account _ _ -> [set account (`plus` amount)]
+    Expense account _ _ -> [set account (`minus` amount)]
+    Transfer fromAccount toAccount -> [set fromAccount (`minus` amount),
+                                       set toAccount (`plus` amount)]
 
 
 

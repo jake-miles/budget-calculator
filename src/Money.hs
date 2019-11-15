@@ -5,30 +5,23 @@ import PositiveInteger
 data PositiveMoney = PositiveMoney PositiveInteger
   deriving (Eq, Ord, Show)
 
-data NegativeMoney = NegativeMoney PositiveInteger
+data Money = Money { unMoney :: Integer }
   deriving (Eq, Ord, Show)
 
-class Money a where
+positiveMoney :: Integer -> PositiveMoney
+positiveMoney n = PositiveMoney $ positiveInteger n
 
-  toCents :: a -> Integer
-  negate :: (Money b) => a -> b
-  
-  add :: (Money b, Money c) => a -> b -> c
-  add a b = money $ (toCents a) + (toCents b)
-  
-  dollars_and_cents :: a -> (Integer, Integer)
-  dollars_and_cents a = quotRem (toCents a) 100
+toMoney :: PositiveMoney -> Money
+toMoney (PositiveMoney cents) = Money $ unPositiveInteger cents
 
-instance Money PositiveMoney where
-  toCents (PositiveMoney cents) = unPositiveInteger cents
-  negate (PositiveMoney cents) = NegativeMoney cents
+plus :: Money -> Money -> Money
+plus (Money a) (Money b) = Money $ a + b
 
-instance Money NegativeMoney where
-  toCents (NegativeMoney cents) = unPositiveInteger cents
-  negate (NegativeMoney cents) = PositiveMoney cents
+minus :: Money -> Money -> Money
+minus a b = a `plus` Money.negate b
 
--- constructor for Money
-money :: Money a => Integer -> a
-money n 
-  | n < 0 = NegativeMoney $ positiveInteger (-n)
-  | otherwise = PositiveMoney $ positiveInteger n
+negate :: Money -> Money
+negate (Money cents) = Money $ -cents
+
+dollars_and_cents :: Money -> (Integer, Integer)
+dollars_and_cents m = quotRem (unMoney m) 100
