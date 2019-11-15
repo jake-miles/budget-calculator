@@ -2,28 +2,33 @@ module Money where
 
 import PositiveInteger
 
-data Money = Credit PositiveInteger
-           | Debit PositiveInteger
+data PositiveMoney = PositiveMoney PositiveInteger
   deriving (Eq, Ord, Show)
 
+data NegativeMoney = NegativeMoney PositiveInteger
+  deriving (Eq, Ord, Show)
+
+class Money a where
+
+  toCents :: a -> Integer
+  negate :: (Money b) => a -> b
+  
+  add :: (Money b, Money c) => a -> b -> c
+  add a b = money $ (toCents a) + (toCents b)
+  
+  dollars_and_cents :: a -> (Integer, Integer)
+  dollars_and_cents a = quotRem (toCents a) 100
+
+instance Money PositiveMoney where
+  toCents (PositiveMoney cents) = unPositiveInteger cents
+  negate (PositiveMoney cents) = NegativeMoney cents
+
+instance Money NegativeMoney where
+  toCents (NegativeMoney cents) = unPositiveInteger cents
+  negate (NegativeMoney cents) = PositiveMoney cents
+
 -- constructor for Money
-money :: Integer -> Money
+money :: Money a => Integer -> a
 money n 
-  | n < 0 = Debit $ positiveInteger (-n)
-  | otherwise = Credit $ positiveInteger n
-
-toCents :: Money -> Integer
-toCents (Credit cents) = unPositiveInteger cents
-toCents (Debit cents) = unPositiveInteger cents
-
--- Credit <-> Debit
-negate :: Money -> Money
-negate (Credit amount) = Debit amount
-negate (Debit amount) = Credit amount
-
-add :: Money -> Money -> Money
-add a b = money $ (toCents a) + (toCents b)
-
--- returns a tuple (dollars, cents) for presentation
-dollars_and_cents :: Money -> (Integer, Integer)
-dollars_and_cents money = quotRem (toCents money) 100
+  | n < 0 = NegativeMoney $ positiveInteger (-n)
+  | otherwise = PositiveMoney $ positiveInteger n
