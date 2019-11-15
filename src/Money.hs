@@ -14,6 +14,8 @@ positiveMoney n = PositiveMoney $ positiveInteger n
 toMoney :: PositiveMoney -> Money
 toMoney (PositiveMoney cents) = Money $ unPositiveInteger cents
 
+zero = Money 0
+
 plus :: Money -> Money -> Money
 plus (Money a) (Money b) = Money $ a + b
 

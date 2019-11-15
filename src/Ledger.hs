@@ -43,29 +43,36 @@ balanceHistory events =
 -- todo: should the event be or have a function? (dynamic dispatch)
 applyEvent :: [Balance] -> Event -> [Balance]
 applyEvent existingBalances event =
-  let
-    findBalance :: [Balance] -> Account -> Maybe Balance
-    findBalance balances account = find ((==account) . balanceAccount) balances
-    zero = Balance (eventDate event) (Money 0)
+  unchanged ++ updatedAndNew
+  where
+    
+    findBalance balances account =
+      find ((==account) . balanceAccount) balances
+
+    zeroBalance =
+      Balance (eventDate event) zero
+    
     getBalance account =
-      maybe (zero account) id $ findBalance existingBalances account
-    updatedAndNew = enact getBalance event
-    untouched = null . (findBalance updatedAndNew) . balanceAccount
-  in
-    (filter untouched existingBalances) ++ updatedAndNew
+      maybe (zeroBalance account) id $ findBalance existingBalances account
+      
+    updatedAndNew =
+      enact getBalance event
+      
+    unchanged =
+      filter (null . (findBalance updatedAndNew) . balanceAccount) existingBalances
 
 enact :: (Account -> Balance) -> Event -> [Balance]
 enact getBalance (Event date positiveAmount transaction) =
   let
     amount = toMoney positiveAmount
-    set account calcNewBalance =
+    update account calcNewBalance =
       Balance date (calcNewBalance $ balanceAmount $ getBalance account) account
   in case transaction of
-    StartOfDayBalance account -> [set account $ const amount]    
-    Income account _ _ -> [set account (`plus` amount)]
-    Expense account _ _ -> [set account (`minus` amount)]
-    Transfer fromAccount toAccount -> [set fromAccount (`minus` amount),
-                                       set toAccount (`plus` amount)]
+    StartOfDayBalance account -> [update account $ const amount]    
+    Income account _ _ -> [update account (`plus` amount)]
+    Expense account _ _ -> [update account (`minus` amount)]
+    Transfer fromAccount toAccount -> [update fromAccount (`minus` amount),
+                                       update toAccount (`plus` amount)]
 
 
 
