@@ -1,9 +1,15 @@
-module Money (Money (..), 
-              zero, plus, minus, Money.negate,
-              dollars_and_cents) where
+module Money where
+
+import PositiveInteger
 
 newtype Money = Money { unMoney :: Integer }
   deriving (Eq, Ord, Show)
+
+data PositiveMoney = PositiveMoney PositiveInteger
+  deriving (Eq, Ord, Show)
+
+toMoney :: PositiveMoney -> Money
+toMoney (PositiveMoney cents) = Money $ unPositiveInteger cents
 
 zero = Money 0
 

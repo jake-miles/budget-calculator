@@ -3,7 +3,6 @@ module Ledger where
 import Data.Time (Day)
 import Data.List 
 import Money
-import PositiveMoney
 
 data Account = Account String
   deriving (Eq, Show)
@@ -32,48 +31,56 @@ type ToAccount = Account
 data Transaction = Income Account (Maybe ExternalEntity) (Maybe What)
                  | Expense Account (Maybe ExternalEntity) (Maybe What)
                  | Transfer FromAccount ToAccount
-                 | StartOfDayBalance Account
+                 | StartOfDayBalance Account -- initial or balance override/correction
   deriving (Eq, Show)
 
-balanceHistory :: [Event] -> [Balance]
-balanceHistory events =
-  foldl' applyEvent [] $ sortOn eventDate events
-
-applyEvent :: [Balance] -> Event -> [Balance]
-applyEvent existingBalances event =
-  let
-
-    existingBalance account =
-      find ((==account) . balanceAccount) existingBalances
-
-    toBalance (account, amount) =
-      Balance (eventDate event) amount account      
-
-    amountBeforeEvent :: Account -> Money
-    amountBeforeEvent =
-      (maybe zero id) . (fmap balanceAmount . existingBalance)
-
-    eventBalances = map toBalance $ amountsAfterEvent event amountBeforeEvent
-    
-    unaffectedBalances =
-      let existingAccounts = map balanceAccount existingBalances
-      in filter ((`elem` existingAccounts) . balanceAccount) eventBalances
-      
-  in
-    unaffectedBalances ++ eventBalances
-    
-amountsAfterEvent :: Event -> (Account -> Money) -> [(Account, Money)]
-amountsAfterEvent (Event date positiveAmount transaction) amountBeforeEvent =
-  let
-    eventAmount = toMoney positiveAmount
-    update account calcNewAmount = (account, newAmount)
-      where newAmount = calcNewAmount $ amountBeforeEvent account
-  in case transaction of
+applyTransaction :: Transaction -> PositiveMoney -> (Account -> Money) -> [(Account, Money)]
+applyTransaction t positiveAmount amountBefore =
+  case t of
     StartOfDayBalance account -> [update account $ const eventAmount]    
     Income account _ _ -> [update account (`plus` eventAmount)]
     Expense account _ _ -> [update account (`minus` eventAmount)]
     Transfer fromAccount toAccount -> [update fromAccount (`minus` eventAmount),
                                        update toAccount (`plus` eventAmount)]
+  where
+    eventAmount = toMoney positiveAmount
+    update account calcNewAmount = (account, newAmount)
+      where newAmount = calcNewAmount $ amountBefore account
+
+applyEvent :: [Balance] -> Event -> [Balance]
+applyEvent existingBalances (Event date amount transaction) =
+  let
+
+    existingBalance :: Account -> Maybe Balance
+    existingBalance account =
+      find ((==account) . balanceAccount) existingBalances
+
+    amountBefore :: Account -> Money
+    amountBefore =
+      (withDefault zero) . (fmap balanceAmount . existingBalance)
+
+    eventAmounts = applyTransaction transaction amount amountBefore
+    eventAccounts = map fst eventAmounts
+    isChanged =
+      (`elem` eventAccounts) . balanceAccount
+
+    toBalance (account, amount) =
+      Balance date amount account
+
+    eventBalances = map toBalance eventAmounts
+    unchangedBalances = filter (not . isChanged) existingBalances
+      
+  in
+    eventBalances ++ unchangedBalances
+
+balanceHistory :: [Event] -> [Balance]
+balanceHistory events =
+  foldl' applyEvent [] $ sortOn eventDate events
+  
+withDefault :: a -> Maybe a -> a
+withDefault a maybeA = maybe a id maybeA
+
+    
 
 
 

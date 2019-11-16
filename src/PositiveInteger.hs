@@ -9,3 +9,4 @@ newtype PositiveInteger = PositiveInteger { unPositiveInteger :: Integer }
 positiveInteger :: Integer -> PositiveInteger
 positiveInteger n
   | n >= 0 = PositiveInteger n
+
