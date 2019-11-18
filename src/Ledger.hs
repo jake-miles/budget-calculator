@@ -1,82 +1,87 @@
 module Ledger where
 
-import Data.Time
+import Data.Time (Day)
 import Data.List
 import Money
 
-data Account = ExternalEntity String
-             | Account String
+data Account = Account String
+  deriving (Eq, Show)
+
+data ExternalEntity = ExternalEntity String
   deriving (Eq, Show)
 
 data Balance = Balance {
+  balanceDate :: Day,
   balanceAmount :: Money,
-  balanceAccount :: Account,    
-  balanceDate :: Day
-} deriving (Eq, Show)
-
-data Transaction = BalanceOverride Balance
-                 | Transfer {
-                     transferAmount :: Money,                     
-                     transferFrom :: Account,
-                     transferTo :: Account,
-                     transferDate :: Day,                     
-                     transferReason :: String
-                   }
+  balanceAccount :: Account
+}
   deriving (Eq, Show)
 
-data Ledger = Ledger [Balance] [Transaction]
-  deriving (Show)
+data Event = Event {
+  eventDate :: Day,
+  eventAmount :: PositiveMoney, 
+  eventTransaction :: Transaction
+}
+  deriving (Eq, Show)
 
-balance :: Money -> Account -> Day -> Balance
-balance _ (ExternalEntity _) _ =
-  error "You can only apply a BalanceOverride to an Account, not an ExternalEntity"
+type What = String
+type FromAccount = Account
+type ToAccount = Account
 
-balance amount account date = Balance amount account date
+data Transaction = Income Account (Maybe ExternalEntity) (Maybe What)
+                 | Expense Account (Maybe ExternalEntity) (Maybe What)
+                 | Transfer FromAccount ToAccount
+                 | StartOfDayBalance Account -- initial or balance override/correction
+  deriving (Eq, Show)
 
-transfer :: Money -> Account -> Account -> Day -> String -> Transaction
-transfer _ (ExternalEntity _) (ExternalEntity _) _ _ =
-  error "One of a Transfer's accounts must be an Account; both cannot be ExternalEntities"
+applyTransaction :: Transaction -> PositiveMoney -> (Account -> Money) -> [(Account, Money)]
+applyTransaction t positiveAmount amountBefore =
+  case t of
+    StartOfDayBalance account -> [update account $ const eventAmount]    
+    Income account _ _ -> [update account (`plus` eventAmount)]
+    Expense account _ _ -> [update account (`minus` eventAmount)]
+    Transfer fromAccount toAccount -> [update fromAccount (`minus` eventAmount),
+                                       update toAccount (`plus` eventAmount)]
+  where
+    eventAmount = toMoney positiveAmount
+    update account calcNewAmount = (account, newAmount)
+      where newAmount = calcNewAmount $ amountBefore account
+
+applyEvent :: [Balance] -> Event -> [Balance]
+applyEvent existingBalances (Event date amount transaction) =
+  (filter isUnchanged existingBalances) ++ (map toBalance eventAmounts)
+  where
+
+    eventAmounts :: [(Account, Money)]
+    eventAmounts = applyTransaction transaction amount amountBefore
+
+    amountBefore :: Account -> Money
+    amountBefore =
+      (withDefault zero) . (fmap balanceAmount . existingBalance)
+    
+    existingBalance :: Account -> Maybe Balance
+    existingBalance account =
+      find ((==account) . balanceAccount) existingBalances
+
+    eventAccounts = map fst eventAmounts
+    existingAccounts = map balanceAccount existingBalances
+
+    accountsUnchanged = existingAccounts \\ eventAccounts
+
+    isUnchanged =
+      null . (`lookup` eventAmounts) . balanceAccount
   
-transfer amount from to date reason
-  | amount < Money(0) = error "You must specify a transfer as a positive amount"
-  | otherwise = Transfer amount from to date reason
+    toBalance (account, amount) =
+      Balance date amount account
 
-transactionDate :: Transaction -> Day
-transactionDate (BalanceOverride (Balance _ _ date)) = date
-transactionDate (Transfer _ _ _ date _) = date
-
-applyTransaction :: Transaction -> [Balance] -> [Balance]
-applyTransaction transaction =
-  map (updateBalance transaction)
-
-updateBalance :: Transaction -> Balance -> Balance
-
-updateBalance transaction old@(Balance amount account _) =
-  case transaction of
-       
-    BalanceOverride new@(Balance overrideAmount setAccount date)
-      | account == setAccount -> new
-      | otherwise -> old     
-
-    Transfer amount from to date _
-      | account == from -> update (Money.negate amount)
-      | account == to -> update amount
-      | otherwise -> old
-      where
-        update delta = Balance (Money.add amount delta) account date 
-
--- the initial balances must be sorted in with the Transactions, and
--- may not sort before them ... is something not quite right?
-ledger :: [Balance] -> [Transaction] -> Ledger
-ledger initial transactions =
-  Ledger initial $ sortOn transactionDate transactions
-
--- ledgerBalances :: Ledger -> [Balance]
--- ledgerBalances (Ledger accounts transactions) =
+balanceHistory :: [Event] -> [Balance]
+balanceHistory events =
+  foldl' applyEvent [] $ sortOn eventDate events
   
-  
+withDefault :: a -> Maybe a -> a
+withDefault a maybeA = maybe a id maybeA
 
---balancesAsOf :: Day -> [Transaction] -> [Balance]
+    
 
 
 

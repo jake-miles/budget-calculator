@@ -1,13 +1,26 @@
 module Money where
 
-data Money = Money { cents :: Integer }
+import PositiveInteger
+
+newtype Money = Money { unMoney :: Integer }
   deriving (Eq, Ord, Show)
 
-add :: Money -> Money -> Money
-add money1 money2 = Money $ cents money1 + cents money2
+data PositiveMoney = PositiveMoney PositiveInteger
+  deriving (Eq, Ord, Show)
+
+toMoney :: PositiveMoney -> Money
+toMoney (PositiveMoney cents) = Money $ unPositiveInteger cents
+
+zero = Money 0
+
+plus :: Money -> Money -> Money
+plus (Money a) (Money b) = Money $ a + b
+
+minus :: Money -> Money -> Money
+minus a b = a `plus` (Money.negate b)
 
 negate :: Money -> Money
-negate (Money _cents) = Money (-_cents)
+negate (Money cents) = Money (-cents)
 
 dollars_and_cents :: Money -> (Integer, Integer)
-dollars_and_cents (Money _cents) = quotRem _cents 100
+dollars_and_cents m = quotRem (unMoney m) 100
