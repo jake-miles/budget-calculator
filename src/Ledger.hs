@@ -1,7 +1,7 @@
 module Ledger where
 
 import Data.Time (Day)
-import Data.List 
+import Data.List
 import Money
 
 data Account = Account String
@@ -49,29 +49,25 @@ applyTransaction t positiveAmount amountBefore =
 
 applyEvent :: [Balance] -> Event -> [Balance]
 applyEvent existingBalances (Event date amount transaction) =
-  let
+  (filter isUnchanged existingBalances) ++ (map toBalance eventAmounts)
+  where
 
-    existingBalance :: Account -> Maybe Balance
-    existingBalance account =
-      find ((==account) . balanceAccount) existingBalances
+    eventAmounts :: [(Account, Money)]
+    eventAmounts = applyTransaction transaction amount amountBefore
 
     amountBefore :: Account -> Money
     amountBefore =
       (withDefault zero) . (fmap balanceAmount . existingBalance)
+    
+    existingBalance :: Account -> Maybe Balance
+    existingBalance account =
+      find ((==account) . balanceAccount) existingBalances
 
-    eventAmounts = applyTransaction transaction amount amountBefore
-    eventAccounts = map fst eventAmounts
-    isChanged =
-      (`elem` eventAccounts) . balanceAccount
-
+    isUnchanged =
+      null . (`lookup` eventAmounts) . balanceAccount
+  
     toBalance (account, amount) =
       Balance date amount account
-
-    eventBalances = map toBalance eventAmounts
-    unchangedBalances = filter (not . isChanged) existingBalances
-      
-  in
-    eventBalances ++ unchangedBalances
 
 balanceHistory :: [Event] -> [Balance]
 balanceHistory events =
