@@ -63,6 +63,11 @@ applyEvent existingBalances (Event date amount transaction) =
     existingBalance account =
       find ((==account) . balanceAccount) existingBalances
 
+    eventAccounts = map fst eventAmounts
+    existingAccounts = map balanceAccount existingBalances
+
+    accountsUnchanged = existingAccounts \\ eventAccounts
+
     isUnchanged =
       null . (`lookup` eventAmounts) . balanceAccount
   
