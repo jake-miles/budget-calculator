@@ -74,10 +74,10 @@ applyEvent existingBalances (Event date amount transaction) =
     toBalance (account, amount) =
       Balance date amount account
 
-balanceHistory :: [Event] -> [Balance]
-balanceHistory events =
+balances :: [Event] -> [Balance]
+balances events =
   foldl' applyEvent [] $ sortOn eventDate events
-  
+
 withDefault :: a -> Maybe a -> a
 withDefault a maybeA = maybe a id maybeA
 
