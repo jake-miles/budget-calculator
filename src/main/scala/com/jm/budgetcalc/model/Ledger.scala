@@ -7,56 +7,61 @@ case class ExternalEntity(name: String)
 
 case class Balance(account: Account, date: Date, amount: Money)
 
-trait Transaction {
-  def apply(amount: PositiveMoney,
-            amountBefore: Account => Money): Map[Account, Money]
-}
+case class LedgerEvent[T <: Transaction](date: Date, amount: PositiveMoney, transaction: T)
+
+trait Transaction
+case class SetAccountBalance(account: Account) extends Transaction
+case class Income(account: Account, who: Option[ExternalEntity], what: Option[String]) extends Transaction
+case class Expense(account: Account, who: Option[ExternalEntity], what: Option[String]) extends Transaction
+case class Transfer(from: Account, to: Account) extends Transaction
 
 object Transaction {
 
-  type ChangedBalances = Map[Account, Money]
+  type ChangedAccounts = Map[Account, Money]
+  type AccountLookup = Account => Money
+  type TransactionOp[T <: Transaction] = (T, PositiveMoney, AccountLookup) => ChangedAccounts
 
-  case class SetAccountBalance(account: Account) extends Transaction {
-    def apply(amount: PositiveMoney, amountBefore: Account => Money): ChangedBalances =
-      Map(account -> amount)
-  }
+  def applyEvent[T <: Transaction](event: LedgerEvent[T], before: List[Balance])
+                                  (implicit transactionOp: TransactionOp[T]): List[Balance] = {
 
-  case class Income(account: Account, who: Option[ExternalEntity], what: Option[String]) extends Transaction {
-    def apply(amount: PositiveMoney, amountBefore: Account => Money): ChangedBalances =
-      Map(account -> (amountBefore(account) + amount))
-  }
-
-  case class Expense(account: Account, who: Option[ExternalEntity], what: Option[String]) extends Transaction {
-    def apply(amount: PositiveMoney, amountBefore: Account => Money): ChangedBalances =
-      Map(account -> (amountBefore(account) - amount))
-  }
-
-  case class Transfer(from: Account, to: Account) extends Transaction {
-    def apply(amount: PositiveMoney, amountBefore: Account => Money): ChangedBalances =
-      Map(
-        from -> (amountBefore(from) - amount),
-        to -> (amountBefore(to) + amount)
-      )
-  }
-
-}
-
-case class LedgerEvent(date: Date, amount: PositiveMoney, transaction: Transaction)
-
-object LedgerOps {
-
-  def applyEvent(event: LedgerEvent, before: List[Balance]): List[Balance] = {
-
-    def amountBefore(account: Account) =
+    def amountBefore(account: Account): Money =
       before
         .find(_.account == account)
-        .getOrElse(PositiveMoney(0))
+        .map(_.amount)
+        .getOrElse(Money.zero)
 
-    val changed: Map[Account, Money] = event.transaction(event.amount, amountBefore)
+    val changedBalances =
+      transactionOp.apply(event.transaction, event.amount, amountBefore)
+                   .map { case (account, amount) => Balance(account, event.date, amount) }
 
-    val unchanged: List[Balance] =
-      before.filter(balance => changed.get(balance.account).isEmpty)
+    val changedAccounts = changedBalances.map(_.account).toSet
 
-    unchanged.concat(changed.values)
+    val unchangedBalances =
+      before.filter(b => ! changedAccounts.contains(b.account))
+
+    unchangedBalances ++ changedBalances
   }
+
+  implicit def applySetAccountBalance(set: SetAccountBalance,
+                                      amount: PositiveMoney,
+                                      amountBefore: AccountLookup): ChangedAccounts =
+      Map(set.account -> amount)
+
+  implicit def applyIncome(income: Income,
+                           amount: PositiveMoney,
+                           amountBefore: AccountLookup): ChangedAccounts =
+      Map(income.account -> (amountBefore(income.account) + amount))
+
+  implicit def applyExpense(expense: Expense,
+                            amount: PositiveMoney,
+                            amountBefore: AccountLookup): ChangedAccounts =
+      Map(expense.account -> (amountBefore(expense.account) - amount))
+
+  implicit def applyTransfer(transfer: Transfer,
+                             amount: PositiveMoney,
+                             amountBefore: AccountLookup): ChangedAccounts =
+      Map(
+        transfer.from -> (amountBefore(transfer.from) - amount),
+        transfer.to -> (amountBefore(transfer.to) + amount)
+      )
 }
